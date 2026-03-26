@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  ai-worker:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app  # 👈 핵심! 내 맥북의 현재 폴더를 도커의 /app 폴더와 실시간 동기화
+    # 👈 uvicorn에 --reload 옵션을 줘서 코드 변경 시 자동 재시작하게 만듭니다.
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
