@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from services.pdf_service import extract_text_from_pdf
+from services.llm_service import summarize_text
 
 router = APIRouter(prefix="/api/v1/pdf", tags=["PDF Extraction"])
 
@@ -16,12 +17,13 @@ async def extract_pdf_endpoint(file: UploadFile = File(...)):
         
         # Service에 전달
         result = extract_text_from_pdf(file_bytes)
+
+        # full_text를 AI에게 전달 후 요약
+        summary = summarize_text(result["full_text"])
         
-        # 결과에 파일 이름만 쓱 얹어서 예쁘게 서빙합니다.
-        result["filename"] = file.filename
-        
-        # 응답 화면이 터지지 않게 전체 텍스트는 응답에서 제외 (추후 AI한테 전달)
-        result.pop("full_text", None) 
+        result["filename"] = file.filename # 결과에 파일이름 추가
+        result["summary"] = summary # 결과에 요약 추가
+        result.pop("full_text", None) # 전체 텍스트 숨김, 응답 화면이 터지지 않게 전체 텍스트는 응답에서 제외 (추후 AI한테 전달)
         
         return result
 
