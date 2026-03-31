@@ -4,3 +4,9 @@ python-multipart
 PyMuPDF
 python-dotenv
 google-generativeai
+langchain
+langchain-google-genai
+psycopg2-binary
+pgvector
+langchain-postgres
+langchain-text-splitters
