@@ -7,7 +7,7 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-def ask_question_to_pdf(question: str):
+def ask_question_to_pdf(question: str, history: list):
     try:
         # 검색 준비: 유저 질문을 임베딩하기 위해 준비
         embeddings = GoogleGenerativeAIEmbeddings(
@@ -29,6 +29,15 @@ def ask_question_to_pdf(question: str):
         # 찾아온 조각을 하나의 텍스트로 
         context = "\n\n---\n\n".join([doc.page_content for doc in docs])
 
+        # 스프링이 보내준 history를 프롬프트용 텍스트로 변환
+        history_text = ""
+        if history:
+            for h in history:
+                role_name = "유저" if h["role"] == "USER" else "AI"
+                history_text += f"{role_name}: {h['message']}\n"
+        else:
+            history_text = "이전 대화 기록이 없습니다."
+
         # 답변 생성 준비: 글을 읽고 대답할 챗봇 AI
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash", 
@@ -39,7 +48,11 @@ def ask_question_to_pdf(question: str):
         # 프롬프트
         prompt = f"""
         당신은 제공된 [참고 문서]만을 바탕으로 질문에 대답하는 친절한 AI 어시스턴트입니다.
+        이전 대화 문맥인 [대화 기록]을 참고하여, 유저의 질문에 자연스럽게 이어지도록 답변하세요.
         만약 [참고 문서]에 질문에 대한 정답이 없다면, 절대 지어내지 말고 "제공된 문서에서는 해당 내용을 찾을 수 없습니다." 라고 대답하세요.
+
+        [대화 기록]
+        {history_text}
 
         [참고 문서]
         {context}
