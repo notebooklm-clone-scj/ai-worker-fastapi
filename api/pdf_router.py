@@ -19,18 +19,21 @@ async def extract_pdf_endpoint(file: UploadFile = File(...)):
         # pdf_service에 전달 (PDF에서 전체 글자(full_text) 확인)
         result = extract_text_from_pdf(file_bytes)
         full_text = result["full_text"]
+        pages_data = result["pages_data"] # 페이지별 데이터
 
         # llm_service에 전달 (full_text를 AI에게 전달 후 요약)
         summary = summarize_text(full_text)
 
-        # vector_service에 전달 (전체 글자를 chunking해서 벡터db에 저장)
-        chunk_count = process_and_store_document(text=full_text, filename=file.filename)
+        # vector_service에 전달 (페이지별로 나눈 전체 글자를 chunking해서 벡터db에 저장)
+        chunk_count = process_and_store_document(pages_data=pages_data, filename=file.filename)
         
         result["filename"] = file.filename # 결과에 파일이름 추가
         result["summary"] = summary # 결과에 요약 추가
         result["chunks_saved"] = chunk_count # 몇 조각으로 나눴는지 추가
+
         result.pop("full_text", None) # 전체 텍스트 숨김, 응답 화면이 터지지 않게 전체 텍스트는 응답에서 제외
-        
+        result.pop("pages_data", None) # 이것도 줄 필요없지
+
         return result
 
     except ValueError as ve:
