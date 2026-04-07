@@ -15,7 +15,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # print(f" [Vector 요리사] DB 주소: {'있음!' if DATABASE_URL else '없음 (None) '}")
 # print("="*50)
 
-def process_and_store_document(text: str, filename: str):
+def process_and_store_document(pages_data: list, filename: str):
     
     try:
         # print("[1단계] 시작...")
@@ -24,7 +24,27 @@ def process_and_store_document(text: str, filename: str):
             chunk_size=500,
             chunk_overlap=50
         )
-        chunks = text_splitter.split_text(text)
+
+        all_chunks = []
+        all_metadatas = []
+
+        for page in pages_data:
+            page_num = page["page_number"]
+            page_text = page["text"]
+
+            if not page_text.strip():
+                continue
+
+            # 해당 페이지만 분할
+            chunks = text_splitter.split_text(page_text)
+
+            # 나눠진 조각들을 모으고 각 조각마다 파일명, 페이지 번호 추가
+            for chunk in chunks:
+                all_chunks.append(chunk)
+                all_metadatas.append({
+                    "filename": filename,
+                    "page_number": page_num
+                })
         # print("[1단계] 종료...")
 
         # print("[2단계] 시작...")
@@ -37,8 +57,6 @@ def process_and_store_document(text: str, filename: str):
 
         # print("[3단계] 시작...")
         # PostgreSQL(pgvector)에 저장
-        metadatas = [{"filename": filename} for _ in chunks]
-        
         
         # PGVector 객체 생성 
         vectorstore = PGVector(
@@ -51,7 +69,7 @@ def process_and_store_document(text: str, filename: str):
         
         # print("[4단계] 시작...")
         # chunking 글자와 메타데이터를 DB에 저장
-        vectorstore.add_texts(texts=chunks, metadatas=metadatas)
+        vectorstore.add_texts(texts=all_chunks, metadatas=all_metadatas)
         # print("[4단계] 종료...")
 
         return len(chunks)

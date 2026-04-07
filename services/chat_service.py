@@ -64,10 +64,18 @@ def ask_question_to_pdf(question: str, history: list):
         # AI에게 질문을 던지고 답변 수령
         response = llm.invoke(prompt)
 
+        # 참고한 문서 조각과 페이지 번호
+        references = []
+        for doc in docs:
+            references.append({
+                "page_number": doc.metadata.get("page_number", 0), # db에서 페이지 꺼내는데 없을 경우 0
+                "content": doc.page_content
+            })
+
         # 유저에게 AI의 대답과 함께 어떤 자료를 참고했는지 함께 제출
         return {
             "answer": response.content,
-            "reference_chunks": [doc.page_content for doc in docs]
+            "reference_chunks": references
         }
     
     except Exception as e:
