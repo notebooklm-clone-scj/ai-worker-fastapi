@@ -30,11 +30,23 @@ def ask_question_to_pdf(question: str, history: list):
         context = "\n\n---\n\n".join([doc.page_content for doc in docs])
 
         # 스프링이 보내준 history를 프롬프트용 텍스트로 변환
+        MAX_HISTORY_COUNT = 6 # 최근 3번의 대화(질문3, 대답3)
         history_text = ""
+
         if history:
-            for h in history:
+            len_history = len(history)
+            # history가 너무 길면 MAX_HISTORY_COUNT만큼만 사용
+            recent_history = history[-MAX_HISTORY_COUNT:] if len_history > MAX_HISTORY_COUNT else history
+
+            # history를 줄인만큼만 사용
+            for h in recent_history:
                 role_name = "유저" if h["role"] == "USER" else "AI"
                 history_text += f"{role_name}: {h['message']}\n"
+
+            # 대화를 잘라냈다면 AI에게 생략되었다는 사실을 통보
+            if len_history > MAX_HISTORY_COUNT:
+                history_text = "(...이전 대화는 생략됨...)\n" + history_text
+
         else:
             history_text = "이전 대화 기록이 없습니다."
 
