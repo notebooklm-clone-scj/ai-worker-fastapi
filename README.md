@@ -1,2 +1,39 @@
 # ai-worker-fastapi
-PDF 파싱, 임베딩 및 LLM 연동 처리 서버
+
+PDF 파싱, 임베딩, 유사도 검색, LLM 응답 생성을 담당하는 FastAPI 서비스입니다.
+
+## 역할
+
+- PDF 텍스트 추출
+- 문서 요약 생성
+- 문서 청크 분할 및 pgvector 저장
+- 사용자 질문 기반 유사도 검색
+- 답변과 reference chunks 생성
+
+## 처리 흐름
+
+```txt
+PDF 업로드
+  -> 텍스트 추출
+  -> 요약 생성
+  -> 청크 분할
+  -> 벡터 저장
+
+채팅 질문
+  -> 유사도 검색
+  -> 참고 청크 구성
+  -> LLM 답변 생성
+  -> 답변 + reference chunks 반환
+```
+
+## 실행
+
+```bash
+cd /Users/seochanjin/workspace/notebooklm/ai-worker-fastapi
+docker compose up --build
+```
+
+## 관련 문서
+
+- 프로젝트 개요: [/Users/seochanjin/workspace/notebooklm/infra-config/README.md](/Users/seochanjin/workspace/notebooklm/infra-config/README.md)
+- 아키텍처 문서: [/Users/seochanjin/workspace/notebooklm/infra-config/docs/architecture.md](/Users/seochanjin/workspace/notebooklm/infra-config/docs/architecture.md)
