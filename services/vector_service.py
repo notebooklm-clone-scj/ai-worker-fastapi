@@ -1,4 +1,5 @@
 import os
+import logging
 from dotenv import load_dotenv
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -8,6 +9,7 @@ from langchain_postgres import PGVector
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
+logger = logging.getLogger(__name__)
 
 # TODO: 추후 상용 배포 시 print 대신 python logging 모듈로 교체 예정
 # print("="*50)
@@ -15,7 +17,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # print(f" [Vector 요리사] DB 주소: {'있음!' if DATABASE_URL else '없음 (None) '}")
 # print("="*50)
 
-def process_and_store_document(pages_data: list, filename: str):
+# PDF 페이지를 chunk로 나누고 pgvector에 저장하는 단계다.
+def process_and_store_document(pages_data: list, filename: str, request_id: str | None = None):
     
     try:
         # print("[1단계] 시작...")
@@ -72,7 +75,20 @@ def process_and_store_document(pages_data: list, filename: str):
         vectorstore.add_texts(texts=all_chunks, metadatas=all_metadatas)
         # print("[4단계] 종료...")
 
-        return len(chunks)
+        logger.info(
+            "event=vector_store_success requestId=%s filename=%s chunkCount=%s",
+            request_id,
+            filename,
+            len(all_chunks)
+        )
+
+        return len(all_chunks)
 
     except Exception as e:
+        logger.exception(
+            "event=vector_store_failure requestId=%s filename=%s error=%s",
+            request_id,
+            filename,
+            str(e)
+        )
         raise ValueError(f"PostgreSQL 벡터 DB 저장 중 에러 발생: {str(e)}")
