@@ -9,6 +9,7 @@ PDF 파싱, 임베딩, 유사도 검색, LLM 응답 생성을 담당하는 FastA
 - 문서 청크 분할 및 pgvector 저장
 - 사용자 질문 기반 유사도 검색
 - 답변과 reference chunks 생성
+- 요청별 requestId, 단계별 처리 로그 기록
 
 ## 처리 흐름
 
@@ -35,5 +36,4 @@ docker compose up --build
 
 ## 관련 문서
 
-- 프로젝트 개요: [/Users/seochanjin/workspace/notebooklm/infra-config/README.md](/Users/seochanjin/workspace/notebooklm/infra-config/README.md)
-- 아키텍처 문서: [/Users/seochanjin/workspace/notebooklm/infra-config/docs/architecture.md](/Users/seochanjin/workspace/notebooklm/infra-config/docs/architecture.md)
+- 전체 문서는 `../infra-config/README.md` 와 `../infra-config/docs/architecture.md` 에서 확인할 수 있습니다.
