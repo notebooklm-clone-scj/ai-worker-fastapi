@@ -1,7 +1,7 @@
 import logging
 import time
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from services.pdf_service import extract_text_from_pdf
 from services.llm_service import summarize_text
 from services.vector_service import process_and_store_document
@@ -11,7 +11,12 @@ logger = logging.getLogger(__name__)
 
 # PDF 업로드 전체 흐름을 단계별로 나눠 시간 로그와 함께 처리한다.
 @router.post("/extract")
-async def extract_pdf_endpoint(http_request: Request, file: UploadFile = File(...)):
+async def extract_pdf_endpoint(
+    http_request: Request,
+    file: UploadFile = File(...),
+    notebook_id: int = Form(...),
+    document_id: int = Form(...)
+):
     request_id = getattr(http_request.state, "request_id", "unknown")
     total_start = time.perf_counter()
 
@@ -59,7 +64,13 @@ async def extract_pdf_endpoint(http_request: Request, file: UploadFile = File(..
 
         # vector_service에 전달 (페이지별로 나눈 전체 글자를 chunking해서 벡터db에 저장)
         vector_start = time.perf_counter()
-        chunk_count = process_and_store_document(pages_data=pages_data, filename=file.filename, request_id=request_id)
+        chunk_count = process_and_store_document(
+            pages_data=pages_data,
+            filename=file.filename,
+            document_id=document_id,
+            notebook_id=notebook_id,
+            request_id=request_id
+        )
         vector_latency_ms = int((time.perf_counter() - vector_start) * 1000)
         logger.info(
             "event=pdf_vector_stage_success requestId=%s filename=%s latencyMs=%s chunkCount=%s",

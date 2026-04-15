@@ -1,6 +1,8 @@
 import os
 import logging
+from urllib.parse import urlparse
 from dotenv import load_dotenv
+import psycopg2
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -10,6 +12,7 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 logger = logging.getLogger(__name__)
+COLLECTION_NAME = "notebook_documents"
 
 # TODO: 추후 상용 배포 시 print 대신 python logging 모듈로 교체 예정
 # print("="*50)
@@ -18,7 +21,13 @@ logger = logging.getLogger(__name__)
 # print("="*50)
 
 # PDF 페이지를 chunk로 나누고 pgvector에 저장하는 단계다.
-def process_and_store_document(pages_data: list, filename: str, request_id: str | None = None):
+def process_and_store_document(
+    pages_data: list,
+    filename: str,
+    document_id: int,
+    notebook_id: int,
+    request_id: str | None = None
+):
     
     try:
         # print("[1단계] 시작...")
@@ -46,7 +55,9 @@ def process_and_store_document(pages_data: list, filename: str, request_id: str 
                 all_chunks.append(chunk)
                 all_metadatas.append({
                     "filename": filename,
-                    "page_number": page_num
+                    "page_number": page_num,
+                    "document_id": document_id,
+                    "notebook_id": notebook_id
                 })
         # print("[1단계] 종료...")
 
@@ -64,7 +75,7 @@ def process_and_store_document(pages_data: list, filename: str, request_id: str 
         # PGVector 객체 생성 
         vectorstore = PGVector(
             embeddings=embeddings,
-            collection_name="notebook_documents", # DB 안에 생길 논리적인 컬렉션 이름
+            collection_name=COLLECTION_NAME, # DB 안에 생길 논리적인 컬렉션 이름
             connection=DATABASE_URL,
             use_jsonb=True
         )
@@ -92,3 +103,62 @@ def process_and_store_document(pages_data: list, filename: str, request_id: str 
             str(e)
         )
         raise ValueError(f"PostgreSQL 벡터 DB 저장 중 에러 발생: {str(e)}")
+
+
+def normalize_connection_string(raw_url: str) -> str:
+    return raw_url.replace("postgresql+psycopg://", "postgresql://")
+
+
+def delete_document_vectors(document_id: int, filename: str, request_id: str | None = None):
+    try:
+        parsed = urlparse(normalize_connection_string(DATABASE_URL))
+
+        connection = psycopg2.connect(
+            dbname=parsed.path.lstrip("/"),
+            user=parsed.username,
+            password=parsed.password,
+            host=parsed.hostname,
+            port=parsed.port or 5432
+        )
+
+        try:
+            with connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        DELETE FROM langchain_pg_embedding
+                        WHERE collection_id = (
+                            SELECT uuid
+                            FROM langchain_pg_collection
+                            WHERE name = %s
+                        )
+                        AND (
+                            cmetadata ->> 'document_id' = %s
+                            OR cmetadata ->> 'filename' = %s
+                        )
+                        """,
+                        (COLLECTION_NAME, str(document_id), filename)
+                    )
+
+                    deleted_count = cursor.rowcount
+
+            logger.info(
+                "event=vector_delete_success requestId=%s documentId=%s filename=%s deletedCount=%s",
+                request_id,
+                document_id,
+                filename,
+                deleted_count
+            )
+
+            return deleted_count
+        finally:
+            connection.close()
+    except Exception as e:
+        logger.exception(
+            "event=vector_delete_failure requestId=%s documentId=%s filename=%s error=%s",
+            request_id,
+            document_id,
+            filename,
+            str(e)
+        )
+        raise ValueError(f"문서 벡터 삭제 중 에러 발생: {str(e)}")
