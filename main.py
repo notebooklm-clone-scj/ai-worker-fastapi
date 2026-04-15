@@ -5,6 +5,7 @@ import uuid
 from fastapi import FastAPI, Request
 from api.pdf_router import router as pdf_router
 from api.chat_router import router as chat_router
+from api.vector_router import router as vector_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,3 +61,4 @@ def health_check():
 # 실제 기능은 라우터 단위로 분리해서 등록한다.
 app.include_router(pdf_router)
 app.include_router(chat_router)
+app.include_router(vector_router)
