@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 import psycopg2
@@ -13,6 +14,52 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 logger = logging.getLogger(__name__)
 COLLECTION_NAME = "notebook_documents"
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "10"))
+EMBEDDING_BATCH_DELAY_SECONDS = float(os.getenv("EMBEDDING_BATCH_DELAY_SECONDS", "1.5"))
+EMBEDDING_MAX_RETRIES = int(os.getenv("EMBEDDING_MAX_RETRIES", "2"))
+EMBEDDING_RETRY_BASE_DELAY_SECONDS = float(
+    os.getenv("EMBEDDING_RETRY_BASE_DELAY_SECONDS", "2.0")
+)
+
+
+def is_quota_error(error: Exception) -> bool:
+    message = str(error)
+    return "RESOURCE_EXHAUSTED" in message or "429" in message
+
+
+def add_texts_with_retry(
+    vectorstore: PGVector,
+    texts: list[str],
+    metadatas: list[dict],
+    request_id: str | None,
+    filename: str,
+    batch_index: int,
+    total_batches: int,
+):
+    attempt = 0
+
+    while True:
+        try:
+            vectorstore.add_texts(texts=texts, metadatas=metadatas)
+            return
+        except Exception as error:
+            if not is_quota_error(error) or attempt >= EMBEDDING_MAX_RETRIES:
+                raise
+
+            attempt += 1
+            retry_delay = EMBEDDING_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+
+            logger.warning(
+                "event=vector_store_batch_retry requestId=%s filename=%s batchIndex=%s totalBatches=%s attempt=%s retryDelaySeconds=%s error=%s",
+                request_id,
+                filename,
+                batch_index,
+                total_batches,
+                attempt,
+                retry_delay,
+                str(error)
+            )
+            time.sleep(retry_delay)
 
 # TODO: 추후 상용 배포 시 print 대신 python logging 모듈로 교체 예정
 # print("="*50)
@@ -28,7 +75,8 @@ def process_and_store_document(
     notebook_id: int,
     request_id: str | None = None
 ):
-    
+    stored_chunk_count = 0
+
     try:
         # print("[1단계] 시작...")
         # Chunking : 500자씩 자르되, 50자씩 겹치게
@@ -59,6 +107,14 @@ def process_and_store_document(
                     "document_id": document_id,
                     "notebook_id": notebook_id
                 })
+
+        if not all_chunks:
+            logger.info(
+                "event=vector_store_skip_empty_document requestId=%s filename=%s",
+                request_id,
+                filename
+            )
+            return 0
         # print("[1단계] 종료...")
 
         # print("[2단계] 시작...")
@@ -80,11 +136,38 @@ def process_and_store_document(
             use_jsonb=True
         )
         # print("[3단계] 종료...")
-        
-        # print("[4단계] 시작...")
-        # chunking 글자와 메타데이터를 DB에 저장
-        vectorstore.add_texts(texts=all_chunks, metadatas=all_metadatas)
-        # print("[4단계] 종료...")
+
+        total_batches = (len(all_chunks) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE
+
+        # 외부 임베딩 API 처리량 제한을 피하려고 chunk를 배치 단위로 나눠 저장한다.
+        for batch_index, batch_start in enumerate(range(0, len(all_chunks), EMBEDDING_BATCH_SIZE), start=1):
+            batch_end = min(batch_start + EMBEDDING_BATCH_SIZE, len(all_chunks))
+            batch_chunks = all_chunks[batch_start:batch_end]
+            batch_metadatas = all_metadatas[batch_start:batch_end]
+
+            add_texts_with_retry(
+                vectorstore=vectorstore,
+                texts=batch_chunks,
+                metadatas=batch_metadatas,
+                request_id=request_id,
+                filename=filename,
+                batch_index=batch_index,
+                total_batches=total_batches,
+            )
+            stored_chunk_count = batch_end
+
+            logger.info(
+                "event=vector_store_batch_success requestId=%s filename=%s batchIndex=%s totalBatches=%s batchSize=%s processedCount=%s",
+                request_id,
+                filename,
+                batch_index,
+                total_batches,
+                len(batch_chunks),
+                batch_end
+            )
+
+            if batch_end < len(all_chunks) and EMBEDDING_BATCH_DELAY_SECONDS > 0:
+                time.sleep(EMBEDDING_BATCH_DELAY_SECONDS)
 
         logger.info(
             "event=vector_store_success requestId=%s filename=%s chunkCount=%s",
@@ -96,13 +179,48 @@ def process_and_store_document(
         return len(all_chunks)
 
     except Exception as e:
+        error_message = str(e)
+
+        if stored_chunk_count > 0:
+            try:
+                delete_document_vectors(
+                    document_id=document_id,
+                    filename=filename,
+                    request_id=request_id
+                )
+                logger.info(
+                    "event=vector_store_partial_cleanup_success requestId=%s filename=%s storedChunkCount=%s",
+                    request_id,
+                    filename,
+                    stored_chunk_count
+                )
+            except Exception as cleanup_error:
+                logger.warning(
+                    "event=vector_store_partial_cleanup_failure requestId=%s filename=%s storedChunkCount=%s error=%s",
+                    request_id,
+                    filename,
+                    stored_chunk_count,
+                    str(cleanup_error)
+                )
+
+        if is_quota_error(e):
+            logger.warning(
+                "event=vector_store_quota_exceeded requestId=%s filename=%s error=%s",
+                request_id,
+                filename,
+                error_message
+            )
+            raise ValueError(
+                "Gemini Embedding API 처리량 또는 무료 티어 한도를 초과했습니다. 잠시 후 다시 시도하거나 더 작은 문서를 업로드해 주세요."
+            )
+
         logger.exception(
             "event=vector_store_failure requestId=%s filename=%s error=%s",
             request_id,
             filename,
-            str(e)
+            error_message
         )
-        raise ValueError(f"PostgreSQL 벡터 DB 저장 중 에러 발생: {str(e)}")
+        raise ValueError(f"PostgreSQL 벡터 DB 저장 중 에러 발생: {error_message}")
 
 
 def normalize_connection_string(raw_url: str) -> str:
