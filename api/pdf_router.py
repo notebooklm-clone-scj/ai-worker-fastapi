@@ -1,3 +1,4 @@
+import os
 import logging
 import time
 
@@ -8,6 +9,8 @@ from services.vector_service import process_and_store_document
 
 router = APIRouter(prefix="/api/v1/pdf", tags=["PDF Extraction"])
 logger = logging.getLogger(__name__)
+MAX_PDF_FILE_SIZE_MB = int(os.getenv("MAX_PDF_FILE_SIZE_MB", "2"))
+MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "30"))
 
 # PDF 업로드 전체 흐름을 단계별로 나눠 시간 로그와 함께 처리한다.
 @router.post("/extract")
@@ -28,11 +31,30 @@ async def extract_pdf_endpoint(
     try:
         # 파일 데이터 읽기
         file_bytes = await file.read()
+        file_size_bytes = len(file_bytes)
+        max_file_size_bytes = MAX_PDF_FILE_SIZE_MB * 1024 * 1024
+
+        if file_size_bytes > max_file_size_bytes:
+            logger.warning(
+                "event=pdf_request_file_too_large requestId=%s filename=%s fileSizeBytes=%s maxFileSizeBytes=%s",
+                request_id,
+                file.filename,
+                file_size_bytes,
+                max_file_size_bytes
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"무료 티어 환경에서는 {MAX_PDF_FILE_SIZE_MB}MB 이하 PDF만 업로드할 수 있습니다. "
+                    "문서를 나눠서 다시 업로드해 주세요."
+                )
+            )
+
         logger.info(
             "event=pdf_request_start requestId=%s filename=%s fileSizeBytes=%s",
             request_id,
             file.filename,
-            len(file_bytes)
+            file_size_bytes
         )
         
         # pdf_service에 전달 (PDF에서 전체 글자(full_text) 확인)
@@ -49,6 +71,22 @@ async def extract_pdf_endpoint(
             result["total_pages"],
             result["full_text_length"]
         )
+
+        if result["total_pages"] > MAX_PDF_PAGES:
+            logger.warning(
+                "event=pdf_request_page_limit_exceeded requestId=%s filename=%s totalPages=%s maxPages=%s",
+                request_id,
+                file.filename,
+                result["total_pages"],
+                MAX_PDF_PAGES
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"무료 티어 환경에서는 {MAX_PDF_PAGES}페이지 이하 PDF만 분석할 수 있습니다. "
+                    "페이지 수가 많은 문서는 분할해서 업로드해 주세요."
+                )
+            )
 
         # llm_service에 전달 (full_text를 AI에게 전달 후 요약)
         summarize_start = time.perf_counter()
@@ -98,6 +136,8 @@ async def extract_pdf_endpoint(
         )
         return result
 
+    except HTTPException:
+        raise
     except ValueError as ve:
         total_latency_ms = int((time.perf_counter() - total_start) * 1000)
         logger.warning(
