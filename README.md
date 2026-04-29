@@ -7,8 +7,10 @@ PDF 파싱, 임베딩, 유사도 검색, LLM 응답 생성을 담당하는 FastA
 - PDF 텍스트 추출
 - 문서 요약 생성
 - 문서 청크 분할 및 pgvector 저장
-- 사용자 질문 기반 유사도 검색
+- 노트북 단위 metadata filter 검색
+- MMR, reranker, hybrid search 기반 reference chunk 검색
 - 답변과 reference chunks 생성
+- reference metadata 생성
 - 요청별 requestId, 단계별 처리 로그 기록
 
 ## 처리 흐름
@@ -22,9 +24,42 @@ PDF 업로드
 
 채팅 질문
   -> 하이브리드 검색
+  -> 로컬 reranker 재정렬
   -> 참고 청크 구성
   -> LLM 답변 생성
   -> 답변 + reference chunks 반환
+```
+
+## RAG 개선 포인트
+
+| 개선 | 내용 |
+| --- | --- |
+| 검색 범위 제한 | `notebook_id` metadata filter를 적용해 현재 노트북 문서 안에서만 검색합니다. |
+| 선택적 문서 필터 | 필요하면 `document_id`로 특정 문서 검색 범위를 더 좁힐 수 있습니다. |
+| MMR 검색 | 후보를 넓게 가져온 뒤 관련성과 다양성을 함께 고려해 중복 chunk를 줄입니다. |
+| Hybrid search | pgvector dense 검색에 keyword 검색을 더해 인물명, 숫자, 날짜, 고유명사 질문을 보강합니다. |
+| Local reranker | 추가 AI 호출 없이 질문과 chunk의 토큰 겹침을 기준으로 후보를 재정렬합니다. |
+| Prompt grounding | 참고 chunk마다 문서명, 페이지, 섹션 라벨을 붙여 답변 근거를 명확히 합니다. |
+| Reference metadata | `document_id`, `document_title`, `section_title`, `page_number`, `chunk_index`, `page_chunk_index`를 응답에 포함합니다. |
+| Runtime reuse | LLM, embedding, PGVector 객체를 프로세스 내에서 재사용합니다. |
+
+## Reference response 예시
+
+```json
+{
+  "answer": "문서 기반 답변",
+  "reference_chunks": [
+    {
+      "document_id": 1,
+      "document_title": "운수 좋은 날",
+      "section_title": "운수좋은날",
+      "page_number": 1,
+      "chunk_index": 0,
+      "page_chunk_index": 0,
+      "content": "검색된 근거 chunk 본문"
+    }
+  ]
+}
 ```
 
 ## 실행
@@ -54,6 +89,7 @@ docker compose up --build
 
 - RAG 품질 비교용 수동 평가셋은 `evaluation/README.md`에서 확인할 수 있습니다.
 - 평가셋은 retrieval recall, faithfulness, relevance, citation quality, latency를 기준으로 기록합니다.
+- 포트폴리오 설명 시에는 같은 질문 세트를 기준으로 retrieval 결과와 답변 근거가 어떻게 달라졌는지 비교할 수 있습니다.
 
 ## 런타임 최적화
 
