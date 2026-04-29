@@ -21,7 +21,7 @@ PDF 업로드
   -> 벡터 저장
 
 채팅 질문
-  -> 유사도 검색
+  -> 하이브리드 검색
   -> 참고 청크 구성
   -> LLM 답변 생성
   -> 답변 + reference chunks 반환
@@ -44,6 +44,8 @@ docker compose up --build
 | `RETRIEVAL_CONTEXT_K` | `5` | 최종 프롬프트에 넣을 reference chunk 수 |
 | `RETRIEVAL_FETCH_K` | `10` | MMR 검색 시 pgvector에서 가져올 후보 수 |
 | `RETRIEVAL_MMR_LAMBDA` | `0.5` | MMR의 relevance/diversity 균형값 |
+| `HYBRID_SEARCH_ENABLED` | `true` | dense 검색 후보와 keyword 검색 후보를 함께 사용할지 여부 |
+| `KEYWORD_FETCH_K` | `5` | keyword search로 추가로 가져올 후보 chunk 수 |
 | `RERANK_ENABLED` | `true` | MMR 후보를 로컬 relevance 점수로 재정렬할지 여부 |
 | `RERANK_POOL_K` | `8` | reranker가 재정렬할 MMR 후보 chunk 수 |
 | `RERANK_MIN_TOKEN_LENGTH` | `2` | reranker 키워드로 사용할 최소 토큰 길이 |
