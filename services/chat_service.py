@@ -10,6 +10,9 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 logger = logging.getLogger(__name__)
+RETRIEVAL_CONTEXT_K = int(os.getenv("RETRIEVAL_CONTEXT_K", "5"))
+RETRIEVAL_FETCH_K = int(os.getenv("RETRIEVAL_FETCH_K", "10"))
+RETRIEVAL_MMR_LAMBDA = float(os.getenv("RETRIEVAL_MMR_LAMBDA", "0.5"))
 
 def build_history_text(history: list) -> str:
     if not history:
@@ -53,9 +56,11 @@ def ask_question_to_pdf(
         if document_id is not None:
             metadata_filter["document_id"] = document_id
 
-        docs = vectorstore.similarity_search(
+        docs = vectorstore.max_marginal_relevance_search(
             query=question,
-            k=3,
+            k=RETRIEVAL_CONTEXT_K,
+            fetch_k=RETRIEVAL_FETCH_K,
+            lambda_mult=RETRIEVAL_MMR_LAMBDA,
             filter=metadata_filter
         )
         retrieval_latency_ms = int((time.perf_counter() - retrieval_start) * 1000)
@@ -63,10 +68,13 @@ def ask_question_to_pdf(
         # 찾아온 조각을 하나의 텍스트로 
         context = "\n\n---\n\n".join([doc.page_content for doc in docs])
         logger.info(
-            "event=chat_retrieval_success requestId=%s notebookId=%s documentId=%s latencyMs=%s retrievedCount=%s",
+            "event=chat_retrieval_success requestId=%s notebookId=%s documentId=%s searchType=mmr fetchK=%s contextK=%s lambdaMult=%s latencyMs=%s retrievedCount=%s",
             request_id,
             notebook_id,
             document_id,
+            RETRIEVAL_FETCH_K,
+            RETRIEVAL_CONTEXT_K,
+            RETRIEVAL_MMR_LAMBDA,
             retrieval_latency_ms,
             len(docs)
         )
