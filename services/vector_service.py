@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 import time
 from urllib.parse import urlparse
 from dotenv import load_dotenv
@@ -20,6 +21,46 @@ EMBEDDING_MAX_RETRIES = int(os.getenv("EMBEDDING_MAX_RETRIES", "2"))
 EMBEDDING_RETRY_BASE_DELAY_SECONDS = float(
     os.getenv("EMBEDDING_RETRY_BASE_DELAY_SECONDS", "2.0")
 )
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
+MIN_CHUNK_CHARS = int(os.getenv("MIN_CHUNK_CHARS", "20"))
+
+
+def get_document_title(filename: str) -> str:
+    title = os.path.splitext(filename)[0].strip()
+    return title or filename
+
+
+def looks_like_section_title(line: str) -> bool:
+    text = line.strip()
+
+    if len(text) < 2 or len(text) > 80:
+        return False
+
+    if text.startswith(("-", "*", "•")):
+        return False
+
+    if text.endswith((".", ",", ";", "!", "?")):
+        return False
+
+    if len(text) > 12 and text.endswith(("다", "요", "니다")):
+        return False
+
+    # 번호형 제목(1. 개요), 마크다운 제목, 짧은 독립 라인을 섹션 후보로 본다.
+    return bool(
+        text.startswith("#")
+        or re.match(r"^\d+(\.\d+)*[.)]?\s+\S+", text)
+        or (len(text) <= 30 and len(text.split()) <= 6)
+    )
+
+
+def infer_section_title(page_text: str, chunk: str) -> str | None:
+    for source_text in (chunk, page_text):
+        for line in source_text.splitlines():
+            if looks_like_section_title(line):
+                return line.strip().lstrip("#").strip()
+
+    return None
 
 
 def is_quota_error(error: Exception) -> bool:
@@ -79,14 +120,16 @@ def process_and_store_document(
 
     try:
         # print("[1단계] 시작...")
-        # Chunking : 500자씩 자르되, 50자씩 겹치게
+        # Chunking : 문단/줄바꿈 경계를 우선 살리되, 설정된 길이를 넘으면 재귀적으로 분할한다.
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP
         )
 
         all_chunks = []
         all_metadatas = []
+        document_title = get_document_title(filename)
+        chunk_index = 0
 
         for page in pages_data:
             page_num = page["page_number"]
@@ -96,17 +139,26 @@ def process_and_store_document(
                 continue
 
             # 해당 페이지만 분할
-            chunks = text_splitter.split_text(page_text)
+            chunks = [
+                chunk.strip()
+                for chunk in text_splitter.split_text(page_text)
+                if len(chunk.strip()) >= MIN_CHUNK_CHARS
+            ]
 
             # 나눠진 조각들을 모으고 각 조각마다 파일명, 페이지 번호 추가
-            for chunk in chunks:
+            for page_chunk_index, chunk in enumerate(chunks):
                 all_chunks.append(chunk)
                 all_metadatas.append({
                     "filename": filename,
+                    "document_title": document_title,
                     "page_number": page_num,
                     "document_id": document_id,
-                    "notebook_id": notebook_id
+                    "notebook_id": notebook_id,
+                    "chunk_index": chunk_index,
+                    "page_chunk_index": page_chunk_index,
+                    "section_title": infer_section_title(page_text, chunk)
                 })
+                chunk_index += 1
 
         if not all_chunks:
             logger.info(
@@ -170,10 +222,13 @@ def process_and_store_document(
                 time.sleep(EMBEDDING_BATCH_DELAY_SECONDS)
 
         logger.info(
-            "event=vector_store_success requestId=%s filename=%s chunkCount=%s",
+            "event=vector_store_success requestId=%s filename=%s chunkCount=%s chunkSize=%s chunkOverlap=%s minChunkChars=%s",
             request_id,
             filename,
-            len(all_chunks)
+            len(all_chunks),
+            CHUNK_SIZE,
+            CHUNK_OVERLAP,
+            MIN_CHUNK_CHARS
         )
 
         return len(all_chunks)

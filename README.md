@@ -34,6 +34,14 @@ cd /Users/seochanjin/workspace/notebooklm/ai-worker-fastapi
 docker compose up --build
 ```
 
+## 주요 설정
+
+| 환경변수 | 기본값 | 설명 |
+| --- | --- | --- |
+| `CHUNK_SIZE` | `500` | 벡터 저장 전 문서를 나눌 최대 chunk 크기 |
+| `CHUNK_OVERLAP` | `50` | 인접 chunk 사이에 겹쳐둘 문자 수 |
+| `MIN_CHUNK_CHARS` | `20` | 너무 짧아 검색 품질을 낮출 수 있는 chunk 제외 기준 |
+
 ## 관련 문서
 
 - 전체 문서는 `../infra-config/README.md` 와 `../infra-config/docs/architecture.md` 에서 확인할 수 있습니다.
