@@ -55,6 +55,11 @@ docker compose up --build
 - RAG 품질 비교용 수동 평가셋은 `evaluation/README.md`에서 확인할 수 있습니다.
 - 평가셋은 retrieval recall, faithfulness, relevance, citation quality, latency를 기준으로 기록합니다.
 
+## 런타임 최적화
+
+- Gemini Embedding, Gemini Chat LLM, Summary LLM, PGVector 클라이언트는 `services/rag/ai_clients.py`에서 생성하고 프로세스 내에서 재사용합니다.
+- 채팅/검색/벡터 저장 서비스는 공통 클라이언트 factory를 통해 객체 생성 중복을 줄입니다.
+
 ## 관련 문서
 
 - 전체 문서는 `../infra-config/README.md` 와 `../infra-config/docs/architecture.md` 에서 확인할 수 있습니다.
