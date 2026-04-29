@@ -26,6 +26,30 @@ def build_history_text(history: list) -> str:
     return "\n".join(lines)
 
 
+def build_reference_label(doc, index: int) -> str:
+    metadata = doc.metadata or {}
+    document_title = metadata.get("document_title") or metadata.get("filename") or "문서명 없음"
+    page_number = metadata.get("page_number", "페이지 정보 없음")
+    section_title = metadata.get("section_title")
+
+    label = f"[참고 {index}] 문서: {document_title} / 페이지: {page_number}"
+    if section_title:
+        label += f" / 섹션: {section_title}"
+
+    return label
+
+
+def build_context_text(docs: list) -> str:
+    if not docs:
+        return "검색된 참고 문서가 없습니다."
+
+    chunks = []
+    for index, doc in enumerate(docs, start=1):
+        chunks.append(f"{build_reference_label(doc, index)}\n{doc.page_content}")
+
+    return "\n\n---\n\n".join(chunks)
+
+
 # 문서 검색과 LLM 답변 생성을 묶는 RAG 채팅 서비스다.
 def ask_question_to_pdf(
     notebook_id: int,
@@ -65,8 +89,8 @@ def ask_question_to_pdf(
         )
         retrieval_latency_ms = int((time.perf_counter() - retrieval_start) * 1000)
 
-        # 찾아온 조각을 하나의 텍스트로 
-        context = "\n\n---\n\n".join([doc.page_content for doc in docs])
+        # 찾아온 조각에 문서명/페이지/섹션 정보를 붙여 LLM이 출처를 구분해서 쓰도록 한다.
+        context = build_context_text(docs)
         logger.info(
             "event=chat_retrieval_success requestId=%s notebookId=%s documentId=%s searchType=mmr fetchK=%s contextK=%s lambdaMult=%s latencyMs=%s retrievedCount=%s",
             request_id,
@@ -91,9 +115,26 @@ def ask_question_to_pdf(
 
         # 프롬프트
         prompt = f"""
-        당신은 제공된 [참고 문서]만을 바탕으로 질문에 대답하는 친절한 AI 어시스턴트입니다.
-        [이전 대화 요약]과 [최근 대화 기록]을 함께 참고해, 유저의 질문에 자연스럽게 이어지도록 답변하세요.
-        만약 [참고 문서]에 질문에 대한 정답이 없다면, 절대 지어내지 말고 "제공된 문서에서는 해당 내용을 찾을 수 없습니다." 라고 대답하세요.
+        당신은 제공된 [참고 문서]만을 근거로 답변하는 RAG 어시스턴트입니다.
+        [이전 대화 요약]과 [최근 대화 기록]은 후속 질문을 이해하는 데만 사용하고, 사실 판단은 반드시 [참고 문서]에 근거하세요.
+
+        규칙:
+        1. [참고 문서]에 없는 내용은 추측하지 마세요.
+        2. 답을 찾을 수 없으면 답변 형식을 사용하지 말고 정확히 "제공된 문서에서는 해당 내용을 찾을 수 없습니다." 라고만 답하세요.
+        3. 답변에는 참고한 문서명과 페이지를 함께 언급하세요.
+        4. 여러 참고 문서가 함께 필요하면 핵심 근거를 묶어서 설명하세요.
+        5. 답변은 아래 형식을 유지하세요.
+
+        답변 형식:
+        요약:
+        - 질문에 대한 핵심 답변을 1~3문장으로 작성
+
+        핵심 근거:
+        - 근거 1
+        - 근거 2
+
+        참고 위치:
+        - [참고 번호] 문서명, 페이지
 
         [이전 대화 요약]
         {summary_text}
