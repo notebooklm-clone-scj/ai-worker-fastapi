@@ -41,6 +41,12 @@ docker compose up --build
 | `CHUNK_SIZE` | `500` | 벡터 저장 전 문서를 나눌 최대 chunk 크기 |
 | `CHUNK_OVERLAP` | `50` | 인접 chunk 사이에 겹쳐둘 문자 수 |
 | `MIN_CHUNK_CHARS` | `20` | 너무 짧아 검색 품질을 낮출 수 있는 chunk 제외 기준 |
+| `RETRIEVAL_CONTEXT_K` | `5` | 최종 프롬프트에 넣을 reference chunk 수 |
+| `RETRIEVAL_FETCH_K` | `10` | MMR 검색 시 pgvector에서 가져올 후보 수 |
+| `RETRIEVAL_MMR_LAMBDA` | `0.5` | MMR의 relevance/diversity 균형값 |
+| `RERANK_ENABLED` | `true` | MMR 후보를 로컬 relevance 점수로 재정렬할지 여부 |
+| `RERANK_POOL_K` | `8` | reranker가 재정렬할 MMR 후보 chunk 수 |
+| `RERANK_MIN_TOKEN_LENGTH` | `2` | reranker 키워드로 사용할 최소 토큰 길이 |
 
 ## RAG 평가
 
