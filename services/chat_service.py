@@ -47,14 +47,16 @@ def build_context_text(docs: list) -> str:
 def build_chat_prompt(summary_text: str, history_text: str, context: str, question: str) -> str:
     return dedent(f"""
     당신은 제공된 [참고 문서]만을 근거로 답변하는 RAG 어시스턴트입니다.
-    [이전 대화 요약]과 [최근 대화 기록]은 후속 질문을 이해하는 데만 사용하고, 사실 판단은 반드시 [참고 문서]에 근거하세요.
+    [구조화된 대화 메모리]와 [최근 대화 기록]은 후속 질문의 지시어와 사용자 목표를 이해하는 데만 사용하세요.
+    사실 판단과 답변 근거는 반드시 [참고 문서]에 한정하세요.
 
     규칙:
     1. [참고 문서]에 없는 내용은 추측하지 마세요.
     2. 답을 찾을 수 없으면 답변 형식을 사용하지 말고 정확히 "제공된 문서에서는 해당 내용을 찾을 수 없습니다." 라고만 답하세요.
     3. 답변에는 참고한 문서명과 페이지를 함께 언급하세요.
     4. 여러 참고 문서가 함께 필요하면 핵심 근거를 묶어서 설명하세요.
-    5. 답변은 아래 형식을 유지하세요.
+    5. [구조화된 대화 메모리]의 핵심 사실과 [참고 문서]가 충돌하면 [참고 문서]를 우선하세요.
+    6. 답변은 아래 형식을 유지하세요.
 
     답변 형식:
     요약:
@@ -67,7 +69,7 @@ def build_chat_prompt(summary_text: str, history_text: str, context: str, questi
     참고 위치:
     - [참고 번호] 문서명, 페이지
 
-    [이전 대화 요약]
+    [구조화된 대화 메모리]
     {summary_text}
 
     [대화 기록]
@@ -91,6 +93,44 @@ def build_reference_chunks(docs: list) -> list[dict]:
         })
 
     return references
+
+
+def build_summary_prompt(previous_summary: str, history_text: str) -> str:
+    return dedent(f"""
+    당신은 NotebookLM 스타일의 대화 메모리 압축기입니다.
+    기존 요약과 새 대화를 합쳐, 이후 후속 질문을 이해하는 데 필요한 정보만 구조화해 남기세요.
+
+    핵심 원칙:
+    1. 문서나 대화에서 확인된 사실만 남기고 추측은 제거합니다.
+    2. 인사말, 반복, 감탄, 잡담은 제거합니다.
+    3. 사용자의 목표와 후속 질문에서 지시어로 다시 참조될 수 있는 대상을 보존합니다.
+    4. 새 대화가 기존 요약을 갱신하거나 정정하면 최신 내용을 우선합니다.
+    5. 빈 항목은 "없음"으로 적습니다.
+    6. 전체는 700자 이내로 유지합니다.
+    7. 아래 형식만 출력하고 다른 설명은 붙이지 않습니다.
+
+    출력 형식:
+    사용자 목표:
+    - ...
+
+    문서 주제:
+    - ...
+
+    핵심 사실:
+    - ...
+
+    미해결 질문:
+    - ...
+
+    후속 질문 맥락:
+    - ...
+
+    [기존 요약]
+    {previous_summary}
+
+    [새로 압축할 대화]
+    {history_text}
+    """).strip()
 
 
 # 문서 검색과 LLM 답변 생성을 묶는 RAG 채팅 서비스다.
@@ -173,23 +213,10 @@ def summarize_conversation(existing_summary: Optional[str], history: list, reque
         previous_summary = existing_summary if existing_summary else "이전 요약 없음"
         history_text = build_history_text(history)
 
-        prompt = f"""
-        당신은 대화 메모리 압축기입니다.
-        기존 요약과 새 대화를 합쳐서, 이후 AI가 참고할 핵심 정보만 남겨주세요.
-
-        규칙:
-        1. 사용자 목표, 문서 주제, 핵심 사실, 미해결 질문만 남깁니다.
-        2. 인사말, 반복, 잡담은 제거합니다.
-        3. 한국어 평문으로 작성합니다.
-        4. 최대 8문장 또는 600자 이내로 유지합니다.
-        5. 다음 요약만 출력하고 다른 설명은 붙이지 않습니다.
-
-        [기존 요약]
-        {previous_summary}
-
-        [새로 압축할 대화]
-        {history_text}
-        """
+        prompt = build_summary_prompt(
+            previous_summary=previous_summary,
+            history_text=history_text
+        )
 
         llm_start = time.perf_counter()
         response = llm.invoke(prompt)

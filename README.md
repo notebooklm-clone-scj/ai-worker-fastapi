@@ -60,6 +60,12 @@ docker compose up --build
 - Gemini Embedding, Gemini Chat LLM, Summary LLM, PGVector 클라이언트는 `services/rag/ai_clients.py`에서 생성하고 프로세스 내에서 재사용합니다.
 - 채팅/검색/벡터 저장 서비스는 공통 클라이언트 factory를 통해 객체 생성 중복을 줄입니다.
 
+## Conversation Memory
+
+- 오래된 대화는 summary memory로 압축해 후속 질문에 함께 전달합니다.
+- summary memory는 `사용자 목표`, `문서 주제`, `핵심 사실`, `미해결 질문`, `후속 질문 맥락` 슬롯으로 구조화합니다.
+- 잡담과 반복은 제거하고, 후속 질문에서 다시 참조될 수 있는 대상과 문서 기반 사실만 보존합니다.
+
 ## 관련 문서
 
 - 전체 문서는 `../infra-config/README.md` 와 `../infra-config/docs/architecture.md` 에서 확인할 수 있습니다.
