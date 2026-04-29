@@ -9,14 +9,10 @@ from urllib.parse import urlparse
 
 import psycopg2
 from dotenv import load_dotenv
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_postgres import PGVector
+from services.rag.ai_clients import COLLECTION_NAME, DATABASE_URL, get_vectorstore
 
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DATABASE_URL = os.getenv("DATABASE_URL")
 logger = logging.getLogger(__name__)
-COLLECTION_NAME = "notebook_documents"
 RETRIEVAL_CONTEXT_K = int(os.getenv("RETRIEVAL_CONTEXT_K", "5"))
 RETRIEVAL_FETCH_K = int(os.getenv("RETRIEVAL_FETCH_K", "10"))
 RETRIEVAL_MMR_LAMBDA = float(os.getenv("RETRIEVAL_MMR_LAMBDA", "0.5"))
@@ -250,17 +246,7 @@ def retrieve_documents(
 ) -> RetrievalResult:
     """dense MMR 검색과 keyword 검색 후보를 합친 뒤 rerank해서 최종 context 문서를 반환한다."""
     retrieval_start = time.perf_counter()
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="gemini-embedding-001",
-        api_key=GEMINI_API_KEY
-    )
-
-    vectorstore = PGVector(
-        embeddings=embeddings,
-        collection_name=COLLECTION_NAME,
-        connection=DATABASE_URL,
-        use_jsonb=True
-    )
+    vectorstore = get_vectorstore()
 
     metadata_filter = {"notebook_id": notebook_id}
     if document_id is not None:

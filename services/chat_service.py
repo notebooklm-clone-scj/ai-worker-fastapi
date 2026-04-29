@@ -1,14 +1,10 @@
-import os
 import logging
 import time
 from textwrap import dedent
 from typing import Optional
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from services.retrieval_service import retrieve_documents
+from services.rag.ai_clients import get_chat_llm, get_summary_llm
+from services.rag.retrieval_service import retrieve_documents
 
-load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 logger = logging.getLogger(__name__)
 
 
@@ -138,11 +134,7 @@ def ask_question_to_pdf(
         summary_text = conversation_summary if conversation_summary else "이전 대화 요약이 없습니다."
 
         # 답변 생성 준비: 글을 읽고 대답할 챗봇 AI
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash", 
-            api_key=GEMINI_API_KEY,
-            temperature=0.1 # 0에 가까울수록 창의성 없이 문서에 있는 내용만 말함 (환각 방지)
-        )
+        llm = get_chat_llm()
 
         prompt = build_chat_prompt(
             summary_text=summary_text,
@@ -176,11 +168,7 @@ def ask_question_to_pdf(
 # 기존 요약과 새 대화를 합쳐 장기 대화용 summary memory를 만든다.
 def summarize_conversation(existing_summary: Optional[str], history: list, request_id: Optional[str] = None):
     try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            api_key=GEMINI_API_KEY,
-            temperature=0.1
-        )
+        llm = get_summary_llm()
 
         previous_summary = existing_summary if existing_summary else "이전 요약 없음"
         history_text = build_history_text(history)
