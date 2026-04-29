@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+from textwrap import dedent
 from typing import Optional
 from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
@@ -48,6 +49,55 @@ def build_context_text(docs: list) -> str:
         chunks.append(f"{build_reference_label(doc, index)}\n{doc.page_content}")
 
     return "\n\n---\n\n".join(chunks)
+
+
+def build_chat_prompt(summary_text: str, history_text: str, context: str, question: str) -> str:
+    return dedent(f"""
+    당신은 제공된 [참고 문서]만을 근거로 답변하는 RAG 어시스턴트입니다.
+    [이전 대화 요약]과 [최근 대화 기록]은 후속 질문을 이해하는 데만 사용하고, 사실 판단은 반드시 [참고 문서]에 근거하세요.
+
+    규칙:
+    1. [참고 문서]에 없는 내용은 추측하지 마세요.
+    2. 답을 찾을 수 없으면 답변 형식을 사용하지 말고 정확히 "제공된 문서에서는 해당 내용을 찾을 수 없습니다." 라고만 답하세요.
+    3. 답변에는 참고한 문서명과 페이지를 함께 언급하세요.
+    4. 여러 참고 문서가 함께 필요하면 핵심 근거를 묶어서 설명하세요.
+    5. 답변은 아래 형식을 유지하세요.
+
+    답변 형식:
+    요약:
+    - 질문에 대한 핵심 답변을 1~3문장으로 작성
+
+    핵심 근거:
+    - 근거 1
+    - 근거 2
+
+    참고 위치:
+    - [참고 번호] 문서명, 페이지
+
+    [이전 대화 요약]
+    {summary_text}
+
+    [대화 기록]
+    {history_text}
+
+    [참고 문서]
+    {context}
+
+    [유저 질문]
+    {question}
+    """).strip()
+
+
+def build_reference_chunks(docs: list) -> list[dict]:
+    references = []
+    for doc in docs:
+        metadata = doc.metadata or {}
+        references.append({
+            "page_number": metadata.get("page_number", 0),
+            "content": doc.page_content
+        })
+
+    return references
 
 
 # 문서 검색과 LLM 답변 생성을 묶는 RAG 채팅 서비스다.
@@ -113,41 +163,12 @@ def ask_question_to_pdf(
             temperature=0.1 # 0에 가까울수록 창의성 없이 문서에 있는 내용만 말함 (환각 방지)
         )
 
-        # 프롬프트
-        prompt = f"""
-        당신은 제공된 [참고 문서]만을 근거로 답변하는 RAG 어시스턴트입니다.
-        [이전 대화 요약]과 [최근 대화 기록]은 후속 질문을 이해하는 데만 사용하고, 사실 판단은 반드시 [참고 문서]에 근거하세요.
-
-        규칙:
-        1. [참고 문서]에 없는 내용은 추측하지 마세요.
-        2. 답을 찾을 수 없으면 답변 형식을 사용하지 말고 정확히 "제공된 문서에서는 해당 내용을 찾을 수 없습니다." 라고만 답하세요.
-        3. 답변에는 참고한 문서명과 페이지를 함께 언급하세요.
-        4. 여러 참고 문서가 함께 필요하면 핵심 근거를 묶어서 설명하세요.
-        5. 답변은 아래 형식을 유지하세요.
-
-        답변 형식:
-        요약:
-        - 질문에 대한 핵심 답변을 1~3문장으로 작성
-
-        핵심 근거:
-        - 근거 1
-        - 근거 2
-
-        참고 위치:
-        - [참고 번호] 문서명, 페이지
-
-        [이전 대화 요약]
-        {summary_text}
-        
-        [대화 기록]
-        {history_text}
-
-        [참고 문서]
-        {context}
-
-        [유저 질문]
-        {question}
-        """
+        prompt = build_chat_prompt(
+            summary_text=summary_text,
+            history_text=history_text,
+            context=context,
+            question=question
+        )
 
         # AI에게 질문을 던지고 답변 수령
         llm_start = time.perf_counter()
@@ -160,18 +181,10 @@ def ask_question_to_pdf(
             len(response.content)
         )
 
-        # 참고한 문서 조각과 페이지 번호
-        references = []
-        for doc in docs:
-            references.append({
-                "page_number": doc.metadata.get("page_number", 0), # db에서 페이지 꺼내는데 없을 경우 0
-                "content": doc.page_content
-            })
-
         # 유저에게 AI의 대답과 함께 어떤 자료를 참고했는지 함께 제출
         return {
             "answer": response.content,
-            "reference_chunks": references
+            "reference_chunks": build_reference_chunks(docs)
         }
     
     except Exception as e:
