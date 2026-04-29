@@ -87,8 +87,14 @@ def build_reference_chunks(docs: list) -> list[dict]:
     references = []
     for doc in docs:
         metadata = doc.metadata or {}
+        document_title = metadata.get("document_title") or metadata.get("filename")
         references.append({
+            "document_id": metadata.get("document_id"),
+            "document_title": document_title,
+            "section_title": metadata.get("section_title"),
             "page_number": metadata.get("page_number", 0),
+            "chunk_index": metadata.get("chunk_index"),
+            "page_chunk_index": metadata.get("page_chunk_index"),
             "content": doc.page_content
         })
 
