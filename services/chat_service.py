@@ -25,8 +25,10 @@ def build_history_text(history: list) -> str:
 
 # 문서 검색과 LLM 답변 생성을 묶는 RAG 채팅 서비스다.
 def ask_question_to_pdf(
+    notebook_id: int,
     question: str,
     history: list,
+    document_id: Optional[int] = None,
     conversation_summary: Optional[str] = None,
     request_id: Optional[str] = None
 ):
@@ -46,15 +48,25 @@ def ask_question_to_pdf(
             use_jsonb=True
         )
 
-        # 유사도 검색: 유저 질문과 가장 비슷한 글자 조각(k개)를 가져온다.
-        docs = vectorstore.similarity_search(query=question, k = 3)
+        # 유사도 검색 범위를 현재 노트북으로 제한해 다른 노트북 문서가 섞이지 않게 한다.
+        metadata_filter = {"notebook_id": notebook_id}
+        if document_id is not None:
+            metadata_filter["document_id"] = document_id
+
+        docs = vectorstore.similarity_search(
+            query=question,
+            k=3,
+            filter=metadata_filter
+        )
         retrieval_latency_ms = int((time.perf_counter() - retrieval_start) * 1000)
 
         # 찾아온 조각을 하나의 텍스트로 
         context = "\n\n---\n\n".join([doc.page_content for doc in docs])
         logger.info(
-            "event=chat_retrieval_success requestId=%s latencyMs=%s retrievedCount=%s",
+            "event=chat_retrieval_success requestId=%s notebookId=%s documentId=%s latencyMs=%s retrievedCount=%s",
             request_id,
+            notebook_id,
+            document_id,
             retrieval_latency_ms,
             len(docs)
         )

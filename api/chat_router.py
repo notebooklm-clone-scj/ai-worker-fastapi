@@ -2,7 +2,7 @@ import logging
 import time
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from services.chat_service import ask_question_to_pdf, summarize_conversation
 from typing import List, Dict, Optional
 
@@ -11,11 +11,13 @@ logger = logging.getLogger(__name__)
 
 # 유저가 보낼 JSON 데이터 모양
 class ChatRequest(BaseModel):
+    notebook_id: int = Field(..., gt=0)
+    document_id: Optional[int] = Field(default=None, gt=0)
     question: str
     conversation_summary: Optional[str] = None
 
     # [{"role": "USER", "message": "..."}, ...] 형태로 들어온다
-    history: Optional[List[Dict[str, str]]] = []
+    history: Optional[List[Dict[str, str]]] = None
 
 class ChatSummaryRequest(BaseModel):
     existing_summary: Optional[str] = None
@@ -29,16 +31,20 @@ async def chat_with_document(request: ChatRequest, http_request: Request):
 
     try:
         logger.info(
-            "event=chat_request_start requestId=%s questionLength=%s historyCount=%s hasConversationSummary=%s",
+            "event=chat_request_start requestId=%s notebookId=%s documentId=%s questionLength=%s historyCount=%s hasConversationSummary=%s",
             request_id,
+            request.notebook_id,
+            request.document_id,
             len(request.question),
             len(request.history or []),
             bool(request.conversation_summary)
         )
 
         result = ask_question_to_pdf(
+            notebook_id=request.notebook_id,
+            document_id=request.document_id,
             question=request.question,
-            history=request.history,
+            history=request.history or [],
             conversation_summary=request.conversation_summary,
             request_id=request_id
         )
