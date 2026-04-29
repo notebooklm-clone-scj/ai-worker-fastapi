@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 import time
 from textwrap import dedent
 from typing import Optional
@@ -14,6 +15,13 @@ logger = logging.getLogger(__name__)
 RETRIEVAL_CONTEXT_K = int(os.getenv("RETRIEVAL_CONTEXT_K", "5"))
 RETRIEVAL_FETCH_K = int(os.getenv("RETRIEVAL_FETCH_K", "10"))
 RETRIEVAL_MMR_LAMBDA = float(os.getenv("RETRIEVAL_MMR_LAMBDA", "0.5"))
+RERANK_ENABLED = os.getenv("RERANK_ENABLED", "true").lower() == "true"
+RERANK_POOL_K = int(os.getenv("RERANK_POOL_K", "8"))
+RERANK_MIN_TOKEN_LENGTH = int(os.getenv("RERANK_MIN_TOKEN_LENGTH", "2"))
+RERANK_STOPWORDS = {
+    "그리고", "그런데", "그러면", "이것", "저것", "해줘", "알려줘", "설명해줘",
+    "무엇", "뭐야", "어떤", "어느", "문서", "내용", "핵심", "정리", "요약"
+}
 
 def build_history_text(history: list) -> str:
     if not history:
@@ -25,6 +33,67 @@ def build_history_text(history: list) -> str:
         lines.append(f"{role_name}: {h['message']}")
     
     return "\n".join(lines)
+
+
+def tokenize_for_rerank(text: str) -> list[str]:
+    """질문과 문서 내용을 비교하기 쉽도록 의미 있는 검색 토큰만 추출한다."""
+    tokens = re.findall(r"[A-Za-z0-9가-힣]+", text.lower())
+    return [
+        token
+        for token in tokens
+        if len(token) >= RERANK_MIN_TOKEN_LENGTH and token not in RERANK_STOPWORDS
+    ]
+
+
+def build_rerank_text(doc) -> str:
+    """chunk 본문뿐 아니라 문서명/섹션/페이지 metadata도 rerank 비교 대상에 포함한다."""
+    metadata = doc.metadata or {}
+    metadata_text = " ".join(
+        str(value)
+        for value in [
+            metadata.get("document_title"),
+            metadata.get("filename"),
+            metadata.get("section_title"),
+            metadata.get("page_number"),
+        ]
+        if value is not None
+    )
+
+    return f"{metadata_text}\n{doc.page_content}"
+
+
+def calculate_rerank_score(question_terms: set[str], doc, original_rank: int) -> float:
+    """질문 토큰과 chunk의 겹침 정도, 직접 매칭, 기존 MMR 순위를 섞어 relevance 점수를 계산한다."""
+    if not question_terms:
+        return 1 / (original_rank + 1)
+
+    rerank_text = build_rerank_text(doc)
+    doc_terms = set(tokenize_for_rerank(rerank_text))
+    overlap_count = len(question_terms & doc_terms)
+    overlap_score = overlap_count / len(question_terms)
+
+    exact_match_count = sum(1 for term in question_terms if term in rerank_text.lower())
+    exact_match_score = exact_match_count / len(question_terms)
+
+    # MMR이 이미 relevance/diversity를 반영했으므로 기존 순위도 약하게 보존한다.
+    rank_score = 1 / (original_rank + 1)
+
+    return (overlap_score * 0.6) + (exact_match_score * 0.3) + (rank_score * 0.1)
+
+
+def rerank_documents(question: str, docs: list, limit: int) -> list:
+    """MMR 후보 chunk를 로컬 relevance 점수로 재정렬하고 최종 context 개수만 남긴다."""
+    if not RERANK_ENABLED or len(docs) <= limit:
+        return docs[:limit]
+
+    question_terms = set(tokenize_for_rerank(question))
+    scored_docs = [
+        (calculate_rerank_score(question_terms, doc, index), index, doc)
+        for index, doc in enumerate(docs)
+    ]
+
+    scored_docs.sort(key=lambda item: (-item[0], item[1]))
+    return [doc for _, _, doc in scored_docs[:limit]]
 
 
 def build_reference_label(doc, index: int) -> str:
@@ -130,23 +199,28 @@ def ask_question_to_pdf(
         if document_id is not None:
             metadata_filter["document_id"] = document_id
 
+        rerank_pool_k = max(RETRIEVAL_CONTEXT_K, RERANK_POOL_K)
+        effective_fetch_k = max(RETRIEVAL_FETCH_K, rerank_pool_k)
         docs = vectorstore.max_marginal_relevance_search(
             query=question,
-            k=RETRIEVAL_CONTEXT_K,
-            fetch_k=RETRIEVAL_FETCH_K,
+            k=rerank_pool_k,
+            fetch_k=effective_fetch_k,
             lambda_mult=RETRIEVAL_MMR_LAMBDA,
             filter=metadata_filter
         )
+        docs = rerank_documents(question, docs, RETRIEVAL_CONTEXT_K)
         retrieval_latency_ms = int((time.perf_counter() - retrieval_start) * 1000)
 
         # 찾아온 조각에 문서명/페이지/섹션 정보를 붙여 LLM이 출처를 구분해서 쓰도록 한다.
         context = build_context_text(docs)
         logger.info(
-            "event=chat_retrieval_success requestId=%s notebookId=%s documentId=%s searchType=mmr fetchK=%s contextK=%s lambdaMult=%s latencyMs=%s retrievedCount=%s",
+            "event=chat_retrieval_success requestId=%s notebookId=%s documentId=%s searchType=mmr rerankEnabled=%s fetchK=%s rerankPoolK=%s contextK=%s lambdaMult=%s latencyMs=%s retrievedCount=%s",
             request_id,
             notebook_id,
             document_id,
-            RETRIEVAL_FETCH_K,
+            RERANK_ENABLED,
+            effective_fetch_k,
+            rerank_pool_k,
             RETRIEVAL_CONTEXT_K,
             RETRIEVAL_MMR_LAMBDA,
             retrieval_latency_ms,
