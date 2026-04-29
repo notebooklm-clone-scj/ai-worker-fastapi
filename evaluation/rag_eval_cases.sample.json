@@ -1,0 +1,187 @@
+[
+  {
+    "case_id": "rag-001",
+    "category": "summary",
+    "document_title": "문서 제목",
+    "question": "이 문서의 핵심 내용을 3가지로 요약해줘.",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 1,
+        "section_title": "섹션 제목"
+      }
+    ],
+    "good_answer_criteria": [
+      "문서의 핵심 주제를 빠뜨리지 않는다.",
+      "참고 문서에 없는 내용을 추가로 추측하지 않는다.",
+      "문서명과 페이지를 함께 언급한다."
+    ]
+  },
+  {
+    "case_id": "rag-002",
+    "category": "keyword",
+    "document_title": "문서 제목",
+    "question": "문서에서 언급된 주요 인물 또는 기관은 누구야?",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 1,
+        "section_title": null
+      }
+    ],
+    "good_answer_criteria": [
+      "인물명 또는 기관명을 정확히 답한다.",
+      "동명이인이나 유사 기관명을 섞지 않는다.",
+      "근거 위치를 표시한다."
+    ]
+  },
+  {
+    "case_id": "rag-003",
+    "category": "numeric",
+    "document_title": "문서 제목",
+    "question": "문서에 나온 수치나 비율 중 가장 중요한 값은 뭐야?",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 2,
+        "section_title": null
+      }
+    ],
+    "good_answer_criteria": [
+      "숫자와 단위를 정확히 답한다.",
+      "여러 수치가 있으면 질문 의도에 맞는 값을 고른다.",
+      "문서에 없는 계산을 임의로 하지 않는다."
+    ]
+  },
+  {
+    "case_id": "rag-004",
+    "category": "date",
+    "document_title": "문서 제목",
+    "question": "문서에서 중요한 일정이나 날짜를 정리해줘.",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 2,
+        "section_title": "일정"
+      }
+    ],
+    "good_answer_criteria": [
+      "날짜를 원문과 같은 형식으로 정확히 답한다.",
+      "날짜별 의미를 함께 설명한다.",
+      "문서에 없는 일정을 만들지 않는다."
+    ]
+  },
+  {
+    "case_id": "rag-005",
+    "category": "page_specific",
+    "document_title": "문서 제목",
+    "question": "3페이지에서 설명하는 핵심 내용은 뭐야?",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 3,
+        "section_title": null
+      }
+    ],
+    "good_answer_criteria": [
+      "지정한 페이지의 내용만 중심으로 답한다.",
+      "다른 페이지의 내용을 섞을 때는 구분해서 말한다.",
+      "3페이지를 참고 위치로 표시한다."
+    ]
+  },
+  {
+    "case_id": "rag-006",
+    "category": "comparison",
+    "document_title": "문서 제목",
+    "question": "A안과 B안의 차이를 비교해줘.",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 4,
+        "section_title": "A안"
+      },
+      {
+        "document_title": "문서 제목",
+        "page_number": 5,
+        "section_title": "B안"
+      }
+    ],
+    "good_answer_criteria": [
+      "두 대상의 차이를 항목별로 비교한다.",
+      "한쪽 내용만 보고 결론을 내리지 않는다.",
+      "각 대상의 근거 페이지를 표시한다."
+    ]
+  },
+  {
+    "case_id": "rag-007",
+    "category": "multi_hop",
+    "document_title": "문서 제목",
+    "question": "문서의 문제점과 그에 대한 대응 방안을 함께 설명해줘.",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 4,
+        "section_title": "문제점"
+      },
+      {
+        "document_title": "문서 제목",
+        "page_number": 6,
+        "section_title": "대응 방안"
+      }
+    ],
+    "good_answer_criteria": [
+      "문제점과 대응 방안을 연결해서 설명한다.",
+      "각 근거가 어느 섹션에서 왔는지 구분한다.",
+      "근거가 부족하면 부족하다고 말한다."
+    ]
+  },
+  {
+    "case_id": "rag-008",
+    "category": "not_found",
+    "document_title": "문서 제목",
+    "question": "이 문서에 없는 외부 정책의 최신 변경사항을 알려줘.",
+    "expected_sources": [],
+    "good_answer_criteria": [
+      "제공된 문서에서는 해당 내용을 찾을 수 없다고 답한다.",
+      "외부 지식을 임의로 사용하지 않는다.",
+      "그럴듯한 최신 정보를 만들어내지 않는다."
+    ]
+  },
+  {
+    "case_id": "rag-009",
+    "category": "citation",
+    "document_title": "문서 제목",
+    "question": "근거 페이지를 포함해서 결론을 알려줘.",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 2,
+        "section_title": null
+      }
+    ],
+    "good_answer_criteria": [
+      "결론과 근거를 분리해서 답한다.",
+      "문서명과 페이지를 명시한다.",
+      "reference chunk와 답변 내용이 일치한다."
+    ]
+  },
+  {
+    "case_id": "rag-010",
+    "category": "follow_up",
+    "document_title": "문서 제목",
+    "question": "방금 말한 두 번째 항목을 더 자세히 설명해줘.",
+    "precondition": "직전 질문에서 문서의 핵심 내용을 번호 목록으로 답변받은 상태",
+    "expected_sources": [
+      {
+        "document_title": "문서 제목",
+        "page_number": 1,
+        "section_title": null
+      }
+    ],
+    "good_answer_criteria": [
+      "최근 대화 맥락의 두 번째 항목을 올바르게 해석한다.",
+      "상세 설명은 참고 문서에 근거한다.",
+      "맥락을 못 찾으면 임의로 추측하지 않는다."
+    ]
+  }
+]

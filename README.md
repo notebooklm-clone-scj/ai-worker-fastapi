@@ -42,6 +42,11 @@ docker compose up --build
 | `CHUNK_OVERLAP` | `50` | 인접 chunk 사이에 겹쳐둘 문자 수 |
 | `MIN_CHUNK_CHARS` | `20` | 너무 짧아 검색 품질을 낮출 수 있는 chunk 제외 기준 |
 
+## RAG 평가
+
+- RAG 품질 비교용 수동 평가셋은 `evaluation/README.md`에서 확인할 수 있습니다.
+- 평가셋은 retrieval recall, faithfulness, relevance, citation quality, latency를 기준으로 기록합니다.
+
 ## 관련 문서
 
 - 전체 문서는 `../infra-config/README.md` 와 `../infra-config/docs/architecture.md` 에서 확인할 수 있습니다.
